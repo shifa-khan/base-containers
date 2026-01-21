@@ -117,6 +117,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Free disk space for CUDA build (~14GB image)
+      # https://github.com/jlumbroso/free-disk-space
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false  # Keep for actions/setup-python
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -124,13 +137,6 @@ jobs:
 
       - name: Install test dependencies
         run: pip install -e ".[test]"
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          df -h
 
       - name: Get image tag from config
         id: config
