@@ -1,6 +1,22 @@
 # Why ODH Midstream Base Images?
 
-This document explains the motivation behind creating standardized base container images for Open Data Hub (ODH).
+This document explains the motivation behind creating standardized base container images for Open Data Hub (ODH). It is intended for ODH maintainers, contributors, and downstream engineers working on RHOAI productization.
+
+## Objective
+
+### Standardize Midstream Builds
+
+Provide a single set of maintained base images so that midstream ODH repositories share a consistent, tested foundation — one place to manage Python versions, CUDA versions, security updates, and OpenShift compatibility instead of duplicating that work across 40+ repos.
+
+### Long-Term Goal: Smoother Path to Downstream
+
+The downstream product (RHOAI) is built on RHEL. By using CentOS Stream — which tracks ahead of RHEL — as the base OS for midstream images, we bring the midstream environment as close to downstream as possible. The long-term goal is to close the gap between midstream and downstream base images so that:
+
+- Midstream projects that adopt these base images are **easier to productize** in downstream — for example, rebuilding against RHEL-based images with internal wheels requires changing only build args, not Containerfiles
+- Transitioning from midstream to downstream base images is a **smooth, low-risk change** rather than a disruptive migration
+- New features and capabilities proven in midstream can be **brought to downstream quickly**, since the underlying base images are already aligned
+
+The goal is met when a midstream consumer can switch to downstream base images by changing only build args (see [Build Arg Swapping](#build-arg-swapping)).
 
 ## The Problem
 
@@ -118,14 +134,31 @@ The base images combine best practices from multiple ODH repositories:
 
 ## Alignment with RHOAI
 
-These base images are designed to work for both:
+The [Objective](#objective) explains _why_ midstream and downstream alignment matters. This section covers the mechanics — how the two streams differ, what must stay separated, and how build arg swapping bridges the gap.
 
 | Environment | Configuration |
 |-------------|---------------|
 | **ODH (midstream)** | Default PyPI indexes, public base images |
 | **RHOAI (downstream)** | Internal indexes, AIPCC base images |
 
-The same Containerfile works for both - only build arguments change:
+### Why Separate Base Images Exist
+
+Midstream base images are built with **upstream wheels** from public package indexes (PyPI, PyTorch). Downstream product containers (RHOAI) are built with **downstream wheels** from internal package indexes. This separation is intentional — the two sets of wheels are compiled against different system libraries, and the base images they target are not interchangeable.
+
+### Do Not Mix Wheels and Base Images
+
+> **Warning:** Using wheels from one stream with base images from the other will cause build or runtime failures.
+
+| Combination | Why it fails |
+|---|---|
+| Downstream wheels in midstream builds | (a) Downstream wheels should not be released freely in midstream. (b) They are not supported outside the downstream base images they were built against. |
+| Upstream wheels in downstream containers | Upstream wheels may vendor library versions that conflict with system-level dependencies in the downstream base images, causing hard-to-diagnose runtime errors. |
+
+Even CPU-only wheels for accelerator-specific packages can introduce dependency mismatches in the wrong base image. Keep wheel sources strictly separated.
+
+### Build Arg Swapping
+
+The transparency goal is that consumers should be able to swap midstream for downstream by changing **only build args**, with no Containerfile edits. This is a work in progress.
 
 ```bash
 # ODH build
@@ -137,4 +170,12 @@ podman build -t myapp:rhoai \
   --build-arg PIP_EXTRA_INDEX_URL="" \
   .
 ```
+
+The following build args are expected to change between streams:
+
+| Build Arg | ODH (midstream) | RHOAI (downstream) |
+|---|---|---|
+| `BASE_IMAGE` | Public image (CentOS, UBI) | Internal AIPCC image |
+| `PIP_INDEX_URL` | `https://pypi.org/simple` | Internal index URL |
+| `PIP_EXTRA_INDEX_URL` | PyTorch public index | Empty or internal |
 
