@@ -151,6 +151,16 @@ RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked,id=odh-base-containe
 RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked,id=odh-base-containers-cuda-dnf \
     dnf install -y --setopt=keepcache=1 ${NV_CUDNN_PACKAGE}
 
+# -----------------------------------------------------------------------------
+# PyTorch CUDA Libraries (profiling, structured sparsity, sparse solver)
+# Required by PyTorch profiler and ML workloads; present in ODH notebooks.
+# -----------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked,id=odh-base-containers-cuda-dnf \
+    dnf install -y --setopt=keepcache=1 \
+        cuda-cupti-${CUDA_MAJOR_MINOR} \
+        libcusparselt0 \
+        libcudss0-cuda-${CUDA_MAJOR}
+
 ENV XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda
 
 # -----------------------------------------------------------------------------
