@@ -80,6 +80,26 @@ def test_libcublas_present(cuda_container):
     assert result.returncode == 0, "libcublas.so not found - libcublas package may be missing"
 
 
+def test_libnccl_present(cuda_container):
+    """Verify NCCL (NVIDIA Collective Communications Library) is present.
+
+    Required for multi-GPU and distributed training with PyTorch and TensorFlow.
+    Installed via libnccl package.
+    """
+    result = cuda_container.run("ldconfig -p | grep libnccl")
+    assert result.returncode == 0, "libnccl.so not found - libnccl package may be missing"
+
+
+def test_libnpp_present(cuda_container):
+    """Verify NPP (NVIDIA Performance Primitives) library is present.
+
+    Provides GPU-accelerated image, signal, and video processing primitives.
+    Installed via libnpp package.
+    """
+    result = cuda_container.run("ldconfig -p | grep libnpp")
+    assert result.returncode == 0, "libnpp.so not found - libnpp package may be missing"
+
+
 def test_libcudnn_present(cuda_container):
     """Verify cuDNN library is present."""
     result = cuda_container.run("ldconfig -p | grep libcudnn")
