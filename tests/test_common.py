@@ -185,6 +185,35 @@ def test_uv_system_python(container):
     assert container.get_env("UV_SYSTEM_PYTHON") == "1"
 
 
+# --- OCI Label Tests ---
+
+
+def test_name_label(container):
+    """Verify name label is set."""
+    labels = container.get_labels()
+    assert labels.get("name"), "name label should be set and non-empty"
+
+
+def test_version_label(container):
+    """Verify version label is set."""
+    labels = container.get_labels()
+    assert labels.get("version"), "version label should be set and non-empty"
+
+
+def test_k8s_display_name_label(container):
+    """Verify Kubernetes display name label is set."""
+    labels = container.get_labels()
+    assert labels.get("io.k8s.display-name"), "Kubernetes display name label should be set"
+
+
+def test_opencontainers_source_label(container):
+    """Verify OCI source label points to GitHub."""
+    labels = container.get_labels()
+    source = labels.get("org.opencontainers.image.source", "")
+    assert source, "OCI source label should be set"
+    assert "github.com" in source, f"OCI source should point to GitHub, got: {source}"
+
+
 # --- Security Tests ---
 
 
