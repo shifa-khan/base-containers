@@ -17,9 +17,9 @@ jobs:
       any-cuda: ${{ steps.filter.outputs['any-cuda'] }}
       any-rocm: ${{ steps.filter.outputs['any-rocm'] }}
       any-python: ${{ steps.filter.outputs['any-python'] }}
-      cuda-versions: ${{ steps.cuda-versions.outputs.versions }}
-      rocm-versions: ${{ steps.rocm-versions.outputs.versions }}
-      python-versions: ${{ steps.python-versions.outputs.versions }}
+      cuda-versions: ${{ steps.build-matrices.outputs.cuda-versions }}
+      rocm-versions: ${{ steps.build-matrices.outputs.rocm-versions }}
+      python-versions: ${{ steps.build-matrices.outputs.python-versions }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -66,83 +66,74 @@ jobs:
               - 'tests/test_python_image.py'
               - 'tests/__init__.py'
               
-      - name: Build CUDA version matrix
-        id: cuda-versions
-        if: steps.filter.outputs.any-cuda == 'true'
+      - name: Build version matrices
+        id: build-matrices
         env:
-          CHANGED_FILES: ${{ steps.filter.outputs.any-cuda_files }}
+          FILTER_CUDA: ${{ steps.filter.outputs.any-cuda }}
+          FILES_CUDA: ${{ steps.filter.outputs.any-cuda_files }}
+          FILTER_ROCM: ${{ steps.filter.outputs.any-rocm }}
+          FILES_ROCM: ${{ steps.filter.outputs.any-rocm_files }}
+          FILTER_PYTHON: ${{ steps.filter.outputs.any-python }}
+          FILES_PYTHON: ${{ steps.filter.outputs.any-python_files }}
         run: |
-          # Check if common files changed (affects all versions)
-          if echo "$CHANGED_FILES" | grep -qE 'requirements-build\.txt|scripts/fix-permissions|scripts/build\.sh|\.dockerignore|tests/'; then
-            echo "Common files changed - including all CUDA versions"
-            # Get all available CUDA versions from directory structure
-            VERSIONS=$(find cuda -maxdepth 1 -type d -name '[0-9]*.[0-9]*' \
-              | sed 's|cuda/||' \
-              | sort -V \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          else
-            # Extract only specific versions from changed cuda/<version>/{Containerfile,app.conf} paths
-            VERSIONS=$(echo "$CHANGED_FILES" \
+          # Converts a newline-separated list of versions into a JSON array
+          # e.g., "12.8\n12.9" -> '["12.8","12.9"]'
+          to_json_array() {
+            sort -uV | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}'
+          }
+
+          # Lists all version directories for a given image type
+          # e.g., all_versions "cuda" -> "12.8\n12.9\n13.0"
+          all_versions() {
+            local type="$1"
+            find "${type}" -maxdepth 1 -type d -name '[0-9]*.[0-9]*' \
+              | sed "s|${type}/||" \
+              | sort -V
+          }
+
+          # Extracts version numbers from changed file paths
+          # e.g., changed_versions "cuda" '["cuda/12.8/Containerfile"]' -> "12.8"
+          changed_versions() {
+            local type="$1"
+            local files="$2"
+            echo "$files" \
               | tr -d '[]" ' \
               | tr ',' '\n' \
-              | awk -F/ '$1=="cuda" && $2 ~ /^[0-9]+\.[0-9]+$/ && ($3=="Containerfile" || $3=="app.conf") {print $2}' \
-              | sort -uV \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          fi
-          
-          echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+              | awk -F/ -v t="${type}" \
+                  '$1==t && $2 ~ /^[0-9]+\.[0-9]+$/ && ($3=="Containerfile" || $3=="app.conf") {print $2}'
+          }
 
-      - name: Build ROCm version matrix
-        id: rocm-versions
-        if: steps.filter.outputs.any-rocm == 'true'
-        env:
-          CHANGED_FILES: ${{ steps.filter.outputs.any-rocm_files }}
-        run: |
-          # Check if common files changed (affects all versions)
-          if echo "$CHANGED_FILES" | grep -qE 'requirements-build\.txt|scripts/fix-permissions|scripts/build\.sh|\.dockerignore|tests/'; then
-            echo "Common files changed - including all ROCm versions"
-            # Get all available ROCm versions from directory structure
-            VERSIONS=$(find rocm -maxdepth 1 -type d -name '[0-9]*.[0-9]*' \
-              | sed 's|rocm/||' \
-              | sort -V \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          else
-            # Extract only specific versions from changed rocm/<version>/{Containerfile,app.conf} paths
-            VERSIONS=$(echo "$CHANGED_FILES" \
-              | tr -d '[]" ' \
-              | tr ',' '\n' \
-              | awk -F/ '$1=="rocm" && $2 ~ /^[0-9]+\.[0-9]+$/ && ($3=="Containerfile" || $3=="app.conf") {print $2}' \
-              | sort -uV \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          fi
+          # Files shared across all versions of an image type. When any of
+          # these change, every version of that type needs to be rebuilt.
+          is_common_file() {
+            local type="$1"
+            local files="$2"
+            echo "$files" | grep -qE \
+              "requirements-build\.txt|scripts/fix-permissions|scripts/build\.sh|\.dockerignore|tests/"
+          }
 
-          echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+          # Build matrix for each image type
+          for type in cuda rocm python; do
+            # Read filter outputs from environment (e.g., FILTER_CUDA, FILES_CUDA)
+            enabled_var="FILTER_${type^^}"
+            files_var="FILES_${type^^}"
+            enabled="${!enabled_var}"
+            files="${!files_var}"
 
-      - name: Build Python version matrix
-        id: python-versions
-        if: steps.filter.outputs.any-python == 'true'
-        env:
-          CHANGED_FILES: ${{ steps.filter.outputs.any-python_files }}
-        run: |
-          # Check if common files changed (affects all versions)
-          if echo "$CHANGED_FILES" | grep -qE 'requirements-build\.txt|scripts/fix-permissions|scripts/build\.sh|\.dockerignore|tests/'; then
-            echo "Common files changed - including all Python versions"
-            # Get all available Python versions from directory structure
-            VERSIONS=$(find python -maxdepth 1 -type d -name '[0-9]*.[0-9]*' \
-              | sed 's|python/||' \
-              | sort -V \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          else
-            # Extract only specific versions from changed python/<version>/{Containerfile,app.conf} paths
-            VERSIONS=$(echo "$CHANGED_FILES" \
-              | tr -d '[]" ' \
-              | tr ',' '\n' \
-              | awk -F/ '$1=="python" && $2 ~ /^[0-9]+\.[0-9]+$/ && ($3=="Containerfile" || $3=="app.conf") {print $2}' \
-              | sort -uV \
-              | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{print "]"}')
-          fi
-          
-          echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+            if [[ "${enabled}" != "true" ]]; then
+              echo "${type}-versions=[]" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            if is_common_file "${type}" "${files}"; then
+              echo "Common files changed - including all ${type} versions"
+              VERSIONS=$(all_versions "${type}" | to_json_array)
+            else
+              VERSIONS=$(changed_versions "${type}" "${files}" | to_json_array)
+            fi
+
+            echo "${type}-versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+          done
 
   lint:
     name: Lint (ruff)
