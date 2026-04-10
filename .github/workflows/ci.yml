@@ -4,14 +4,31 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, reopened, synchronize, labeled]
     branches: [main]
+  merge_group:
 
 env:
   IMAGE_REGISTRY: localhost
 
 jobs:
+  authorize:
+    name: Authorize
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.author_association == 'MEMBER' ||
+      github.event.pull_request.author_association == 'OWNER' ||
+      github.event.pull_request.author_association == 'COLLABORATOR' ||
+      github.event.pull_request.author_association == 'CONTRIBUTOR' ||
+      github.event.pull_request.user.type == 'Bot' ||
+      contains(toJSON(github.event.pull_request.labels.*.name), 'ok-to-test')
+    steps:
+      - run: echo "Authorized"
+
   changes:
     name: Detect Changes
+    needs: [authorize]
     runs-on: ubuntu-latest
     outputs:
       any-cuda: ${{ steps.filter.outputs['any-cuda'] }}
@@ -138,6 +155,7 @@ jobs:
 
   lint:
     name: Lint (ruff)
+    needs: [authorize]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -158,6 +176,7 @@ jobs:
 
   type-check:
     name: Type Check (mypy)
+    needs: [authorize]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -175,6 +194,7 @@ jobs:
 
   detect-containerfile-changes:
     name: Detect Containerfile Changes
+    needs: [authorize]
     runs-on: ubuntu-latest
     outputs:
       containerfiles_changed: ${{ steps.changed.outputs.any_changed }}
@@ -461,8 +481,9 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.authorize.result == 'success'
     needs:
+      - authorize
       - lint
       - type-check
       - lint-containerfiles
