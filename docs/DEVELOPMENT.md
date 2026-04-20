@@ -157,6 +157,7 @@ GitHub Actions automatically runs on every PR and push to `main`:
 
 | Job | Trigger | Description |
 |-----|---------|-------------|
+| `authorize` | PR, push | Gates CI for non-org contributors (see below) |
 | `lint` | PR, push | Runs `ruff check` and `ruff format --check` |
 | `type-check` | PR, push | Runs `mypy` type checking |
 | `lint-containerfiles` | PR, push | Lints changed Containerfiles with Hadolint |
@@ -171,6 +172,34 @@ when changes do not apply.
 
 Version matrices are built dynamically from the directory structure (`cuda/*/`, `rocm/*/`, `python/*/`).
 No manual CI updates are needed when adding new versions.
+
+### CI Authorization for External Contributors
+
+CI does not run automatically on PRs from external contributors (non-org members).
+This prevents untrusted code from consuming CI resources without review.
+
+| PR author | CI behavior |
+|-----------|-------------|
+| Organization member, collaborator, or prior contributor | Runs automatically |
+| GitHub App bot (Renovate, Mintmaker) | Runs automatically |
+| First-time contributor | Skipped until a maintainer approves |
+
+To approve CI for an external PR, a maintainer comments on the PR:
+
+```
+/ok-to-test
+```
+
+This adds the `ok-to-test` label, which triggers the CI pipeline. The label
+persists across subsequent pushes, so CI will continue to run on updates to the
+PR without needing repeated approval.
+
+### Auto-merge
+
+The auto-merge workflow (`auto-merge.yml`) automatically enables GitHub's
+auto-merge on PRs from organization members, collaborators, prior contributors, and bots. Once all
+required checks pass and the PR has the necessary approvals, GitHub merges it
+automatically. PRs from external contributors are excluded from auto-merge.
 
 ### Before Submitting a PR
 
